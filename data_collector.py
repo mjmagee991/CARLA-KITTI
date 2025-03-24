@@ -97,6 +97,44 @@ class CameraManager(object):
                 self.sensors.update(blickfeld_sensor_def)
 
         self.setup_sensors(args)
+        self.add_rsu(args, lidar_ray_cast_attributes)
+
+    def add_rsu(self, args, attrs):
+        sensor_key = 'sensor.lidar.rsu_lidar'
+        location = carla.Location(x=-81, y=131, z=10)
+        rotation = carla.Rotation()
+        transform = Transform(location, rotation)
+        rsu_sensor_def = {sensor_key: {'name': 'RSU',
+                                       'attributes': attrs,
+                                       'transform': transform}}
+        self.sensors.update(rsu_sensor_def)
+
+        world = self._parent.get_world()
+        bp_library = world.get_blueprint_library()
+        blp = bp_library.find('sensor.lidar.ray_cast')
+        for key, val in self.sensors[sensor_key]['attributes'].items():
+            blp.set_attribute(key, val)
+        transform = self.sensors[sensor_key].get('transform', self.default_sensor_transform)
+        attach_type = self.sensors[sensor_key].get('attach_type', self.default_sensor_attachment_type)
+
+        sensor = self._parent.get_world().spawn_actor(blp, transform)
+        self.sensors[sensor_key].update({'sensor': sensor})
+        veh_cam_mat = self.sensors['sensor.camera.rgb']['transform'].get_inverse_matrix()
+        lidar_veh_mat = self.sensors[sensor_key]['transform'].get_matrix()
+        lidar_cam_mat = np.dot(veh_cam_mat, lidar_veh_mat)
+        self.sensors[sensor_key].update({'lidar_cam_mat': lidar_cam_mat})
+
+        # Setup open3d visualization
+        if args.vis_lidar:
+            sensor_name = self.sensors[sensor_key]['name']
+            o3d_vis = o3d.visualization.Visualizer()
+            o3d_vis.create_window(
+                window_name=f'Carla {sensor_name} Lidar', width=960, height=540, left=480, top=270)
+            o3d_vis.get_render_option().background_color = [0.05, 0.05, 0.05]
+            o3d_vis.get_render_option().point_size = 1
+            o3d_vis.get_render_option().show_coordinate_frame = True
+            point_list = o3d.geometry.PointCloud()
+            self.sensors[sensor_key].update({'o3d_vis': o3d_vis, 'point_list': point_list, 'lidar_vis_frame': 0})
 
     def get_intrinsic_matrix(self, camera):
 
