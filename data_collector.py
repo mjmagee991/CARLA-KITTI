@@ -26,7 +26,7 @@ from dataexport import save_ref_files, save_image_data, save_kitti_data, save_li
 from dataexport import save_groundplanes, save_calibration_matrices
 from camera_utils import draw_2d_bounding_boxes, draw_3d_bounding_boxes
 
-CLASSES_TO_LABEL = ["vehicle", "pedestrian"]
+CLASSES_TO_LABEL = ["vehicle"]
 
 
 VIRIDIS = np.array(cm.get_cmap('plasma').colors)
@@ -277,7 +277,7 @@ class CarlaGame(object):
             (args.width, args.height),
             pygame.HWSURFACE | pygame.DOUBLEBUF)
         client = carla.Client(args.host, args.port)
-        client.set_timeout(4.0)
+        client.set_timeout(10.0)
         client.reload_world()
         self.hud = HUD(args.width, args.height)
         self.world = World(client.get_world(), self.hud, args)
@@ -792,10 +792,10 @@ def main():
     spawn_npc_path = os.path.join(carla_root, 'PythonAPI', 'examples', 'spawn_npc.py')
 
     def target(**kwargs):
-        process = subprocess.Popen([spawn_npc_path, '-w 200'], **kwargs)
+        process = subprocess.Popen([spawn_npc_path, '-n 100', '-w 0'], **kwargs)
         process.communicate()
 
-    thread = threading.Thread(target=target, kwargs={'stdout':subprocess.PIPE, 'shell':True})
+    thread = threading.Thread(target=target, kwargs={'stdout':subprocess.PIPE})
     thread.start()
 
     args = argparser.parse_args()

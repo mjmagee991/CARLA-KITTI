@@ -50,7 +50,7 @@ def get_bounding_box_and_refpoint(agent, camera, camera_calibration):
     concatenated with the bbox vertices to boost the performance as all vertices and refpoint are processed in parallel.
     Returns 3D bounding box and its reference point for a agent based on camera view.
     """
-    bbox_refpoint = np.array([[0, 0, 0, 1]], dtype=np.float)
+    bbox_refpoint = np.array([[0, 0, 0, 1]], dtype=float)
     bb_cords = ClientSideBoundingBoxes._create_bb_points(agent)
     bb_cords_and_refpoint = np.vstack((bb_cords, bbox_refpoint))
 
