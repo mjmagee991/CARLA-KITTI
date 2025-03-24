@@ -348,16 +348,46 @@ class CarlaGame(object):
 
         return dist_func(cur_pos, last_pos)
 
+    def _save_pose_info(self, args):
+        # Get the transform of the ego vehicle
+        transform = self.world.player.get_transform()
+        location = transform.location
+        rotation = transform.rotation
+
+        # Extract pose information
+        x = location.x
+        y = location.y
+        z = location.z
+        yaw = rotation.yaw
+        pitch = rotation.pitch
+        roll = rotation.roll
+
+        # Create a string with pose information
+        pose_info = f"{x:.4f}, {y:.4f}, {z:.4f}, {yaw:.4f}, {pitch:.4f}, {roll:.4f}\n"
+
+        # Define the path to save the pose information file
+        pose_info_folder = os.path.join(args.phase_dir, 'pose')
+        os.makedirs(pose_info_folder, exist_ok=True)
+
+        pose_info_path = os.path.join(pose_info_folder, f"{self.captured_frame_no:06}.txt")
+
+        # Write the pose information to the file
+        with open(pose_info_path, 'w') as f:
+            f.write(pose_info)
+
     def _save_datapoints(self, datapoints, cam_calibration, rgb_image, point_clouds, lidar_heights, lidar_cam_mats, args):
         # Determine whether to save files
         distance_driven = self._distance_since_last_recording()
         logging.debug("Distance driven since last recording: {}".format(distance_driven))
         has_driven_long_enough = distance_driven is None or distance_driven > args.distance_since_last_recording
+
         if (self._timer.step + 1) % args.steps_between_recordings == 0:
-            if has_driven_long_enough and datapoints:
+            # Modified code to ensure data is saved even when there are no vehicles
+            if has_driven_long_enough: #and datapoints:
                 self._update_agent_location()
                 # Save screen, lidar and kitti training labels together with calibration and groundplane files
                 self._save_training_files(datapoints, cam_calibration, point_clouds, rgb_image, lidar_heights, lidar_cam_mats, args)
+                self._save_pose_info(args)
                 self.captured_frame_no += 1
                 self._captured_frames_since_restart += 1
                 self._frames_since_last_capture = 0
