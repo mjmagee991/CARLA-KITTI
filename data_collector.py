@@ -896,6 +896,7 @@ def main():
         lidar_paths = [default_lidar_path]
         calibration_paths = [default_calibration_path]
 
+        args.lidars.append('rsu')
         if len(args.lidars) > 1:
             logging.warning('More than one lidar type is provided.' +
                             'The first lidar type gets default names for kitti dataset.' +
