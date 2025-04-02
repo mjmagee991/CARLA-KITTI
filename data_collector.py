@@ -68,6 +68,27 @@ class CameraManager(object):
                                       'vertical_fov_limit': '30.0',
                                       'mirror_frequency': '150.0',  # TODO what's this?
                                       'range': str(args.lidar_range)}
+        # Based on information from Ali
+        lidar_os1_128_attributes = {'channels': '128',
+                                    'range': '170',
+                                    'points_per_second': '524288',
+                                    'rotation_frequency': '10',
+                                    'upper_fov': '21.2',
+                                    'lower_fov': '-21.2'}
+        lidar_os0_64_attributes = {'channels': '64',
+                                   'range': '50',
+                                   'points_per_second': '131072',
+                                   'rotation_frequency': '10',
+                                   'upper_fov': '45.0',
+                                   'lower_fov': '-45.0'}
+        # Based on Ouster OS0 REV7.0
+        # https://data.ouster.io/downloads/datasheets/datasheet-rev7-v3p1-os0.pdf
+        lidar_os0_128_attributes = {'channels': '128',
+                                    'range': '75',
+                                    'points_per_second': '5242880',
+                                    'rotation_frequency': '10',
+                                    'upper_fov': '45.4',
+                                    'lower_fov': '-45.4'}
 
         self.default_sensor_transform = carla.Transform(carla.Location(x=1.6, z=1.7))
         self.default_sensor_attachment_type = attachment.Rigid
@@ -87,7 +108,7 @@ class CameraManager(object):
         for lidar in args.lidars:
             if lidar == 'ray_cast':
                 ray_cast_sensor_def = {'sensor.lidar.ray_cast': {'name': 'Ray-Cast',
-                                                                 'attributes': lidar_ray_cast_attributes,
+                                                                 'attributes': lidar_os1_128_attributes,
                                                                  'transform': self.default_sensor_transform}}
                 self.sensors.update(ray_cast_sensor_def)
             elif lidar == 'blickfeld':
@@ -97,12 +118,12 @@ class CameraManager(object):
                 self.sensors.update(blickfeld_sensor_def)
 
         self.setup_sensors(args)
-        self.add_rsu(args, lidar_ray_cast_attributes)
+        self.add_rsu(args, lidar_os0_128_attributes)
 
     def add_rsu(self, args, attrs):
         sensor_key = 'sensor.lidar.rsu_lidar'
-        location = carla.Location(x=-81, y=131, z=10)
-        rotation = carla.Rotation()
+        location = carla.Location(x=-93.5, y=145.5, z=5.5)
+        rotation = carla.Rotation(-20, 0, -20)
         transform = Transform(location, rotation)
         rsu_sensor_def = {sensor_key: {'name': 'RSU',
                                        'attributes': attrs,
