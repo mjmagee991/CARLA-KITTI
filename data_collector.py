@@ -434,7 +434,7 @@ class CarlaGame(object):
         with open(pose_info_path, 'w') as f:
             f.write(pose_info)
 
-    def _save_datapoints(self, datapoints, cam_calibration, rgb_image, point_clouds, lidar_heights, lidar_cam_mats, args):
+    def _save_datapoints(self, datapoints, rsu_datapoints, cam_calibration, rgb_image, point_clouds, lidar_heights, lidar_cam_mats, args):
         # Determine whether to save files
         distance_driven = self._distance_since_last_recording()
         logging.debug("Distance driven since last recording: {}".format(distance_driven))
@@ -445,7 +445,7 @@ class CarlaGame(object):
             if has_driven_long_enough: #and datapoints:
                 self._update_agent_location()
                 # Save screen, lidar and kitti training labels together with calibration and groundplane files
-                self._save_training_files(datapoints, cam_calibration, point_clouds, rgb_image, lidar_heights, lidar_cam_mats, args)
+                self._save_training_files(datapoints, rsu_datapoints, cam_calibration, point_clouds, rgb_image, lidar_heights, lidar_cam_mats, args)
                 self._save_pose_info(args)
                 self.captured_frame_no += 1
                 self._captured_frames_since_restart += 1
@@ -468,7 +468,7 @@ class CarlaGame(object):
 
         # Retrieve and draw datapoints on rgb image
         datapoint_gen_time = time.time()
-        image, datapoints, bounding_boxes, boxes_2d = self._generate_datapoints(image, depth_map, args)
+        image, datapoints, rsu_datapoints, bounding_boxes, boxes_2d = self._generate_datapoints(image, depth_map, args)
         #logging.info("datapoint generation time: ", (time.time() - datapoint_gen_time) * 1000.)
         # Display RGB Image
         surface = pygame.surfarray.make_surface(image.swapaxes(0, 1))
@@ -535,9 +535,9 @@ class CarlaGame(object):
                 bbox_top_right = (datapoint.bbox[2], datapoint.bbox[1])
                 display.blit(textsurface, bbox_top_right)
 
-        return datapoints
+        return datapoints, rsu_datapoints
 
-    def _save_training_files(self, datapoints, cam_calibration, point_clouds, rgb_image, lidar_heights, lidar_cam_mats, args):
+    def _save_training_files(self, datapoints, rsu_datapoints, cam_calibration, point_clouds, rgb_image, lidar_heights, lidar_cam_mats, args):
         logging.info("Attempting to save at timer step {}, frame no: {}".format(
             self._timer.step, self.captured_frame_no))
 
@@ -555,10 +555,12 @@ class CarlaGame(object):
             save_calibration_matrices(calib_filename, cam_calibration, lidar_cam_mat)
 
         kitti_fname = args.label_path.format(self.captured_frame_no)
+        rsu_kitti_fname = args.rsu_label_path.format(self.captured_frame_no)
         img_fname = args.image_path.format(self.captured_frame_no)
         save_ref_files(args.phase_dir, self.captured_frame_no)
         save_image_data(img_fname, rgb_image)
         save_kitti_data(kitti_fname, datapoints)
+        save_kitti_data(rsu_kitti_fname, rsu_datapoints)
 
     def _update_agent_location(self):
         self._agent_location_on_last_capture = self.world.player.get_transform().location
@@ -570,6 +572,7 @@ class CarlaGame(object):
         """
 
         datapoints = []
+        rsu_datapoints = []
         bounding_boxes = []
         boxes_2d = []
         image = image.copy()
@@ -584,18 +587,22 @@ class CarlaGame(object):
 
         # Stores all datapoints for the current frames
         for agent in agents_list:
-            image, kitti_datapoint, bounding_box = create_kitti_datapoint(agent=agent,
+            image, kitti_datapoint, rsu_kitti_datapoint, bounding_box = create_kitti_datapoint(agent=agent,
                                                                           camera=self.world.camera_manager.sensors['sensor.camera.rgb']['sensor'],
                                                                           cam_calibration=self.world.camera_manager.sensors['sensor.camera.rgb']['calibration'],
                                                                           image=image,
                                                                           depth_map=depth_map,
                                                                           player_transform=self.world.player.get_transform(),
+                                                                          rsu_transform=self.world.camera_manager.sensors['sensor.lidar.rsu_lidar']['transform'],
                                                                           max_render_depth=args.lidar_range)
             if kitti_datapoint:
                 datapoints.append(kitti_datapoint)
                 bounding_boxes.append(bounding_box)
                 boxes_2d.append(kitti_datapoint.bbox)
-        return image, datapoints, bounding_boxes, boxes_2d
+            if rsu_kitti_datapoint:
+                rsu_datapoints.append(rsu_kitti_datapoint)
+
+        return image, datapoints, rsu_datapoints, bounding_boxes, boxes_2d
 
     def _preprocess_sensor_data(self, sensor_data):
         processed_data = dict()
@@ -701,7 +708,7 @@ class CarlaGame(object):
 
                 # Rendering sensor images and creating KITTI datapoints for each frame
                 # TODO makes sense to have on_render only dealing with rendering not datapoint generation.
-                datapoints = self._render(self.display, processed_sensor_data, args)
+                datapoints, rsu_datapoints = self._render(self.display, processed_sensor_data, args)
 
                 # Rendering HUD
                 self.world.render(self.display)
@@ -723,6 +730,7 @@ class CarlaGame(object):
 
                     rgb_image = processed_sensor_data['sensor.camera.rgb']['image']
                     self._save_datapoints(datapoints,
+                                          rsu_datapoints,
                                           self.world.camera_manager.sensors['sensor.camera.rgb']['calibration'],
                                           rgb_image,
                                           point_clouds,
@@ -894,7 +902,7 @@ def main():
 
     args = argparser.parse_args()
     phase_dir = os.path.join(args.output_dir, args.phase)
-    default_folders = ['calib', 'image_2', 'label_2', 'velodyne', 'planes']
+    default_folders = ['calib', 'image_2', 'label_2', 'rsu_label_2', 'velodyne', 'planes']
 
     assert all([lidar in ['ray_cast', 'blickfeld'] for lidar in args.lidars])
 
@@ -902,6 +910,7 @@ def main():
     args.phase_dir = phase_dir
 
     args.label_path = os.path.join(phase_dir, 'label_2/{0:06}.txt')
+    args.rsu_label_path = os.path.join(phase_dir, 'rsu_label_2/{0:06}.txt')
     args.image_path = os.path.join(phase_dir, 'image_2/{0:06}.png')
 
 

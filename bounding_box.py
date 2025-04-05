@@ -69,7 +69,7 @@ def get_bounding_box_and_refpoint(agent, camera, camera_calibration):
     return (camera_bbox, camera_refpoint), (sensor_bbox, sensor_refpoint)
 
 
-def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, player_transform, max_render_depth=70):
+def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, player_transform, rsu_transform, max_render_depth=70):
     """
     Calculates the bounding box of the given agent, and
     returns a KittiDescriptor which describes the object to be labeled
@@ -106,7 +106,7 @@ def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, pla
         area = calc_bbox2d_area(bbox_2d)
         if area < MIN_BBOX_AREA_IN_PX:
             logging.info("Filtered out bbox with too low area {}".format(area))
-            return image, None, None
+            return image, None, None, None
 
         occlusion = calculate_occlusion(camera_bbox, agent, depth_map)
         rotation_y = get_relative_rotation_y(agent, player_transform)
@@ -121,10 +121,46 @@ def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, pla
         datapoint.set_alpha(alpha)
         datapoint.set_truncated(truncation)
         datapoint.set_occlusion(occlusion)
-
-        return image, datapoint, camera_bbox
     else:
-        return image, None, None
+        datapoint = None
+        camera_bbox = None
+
+
+    # TODO Fix to actually limit to datapoints visible by the RSU
+    if num_visible_vertices >= MIN_VISIBLE_VERTICES_FOR_RENDER > num_vertices_outside_camera:
+        # TODO I checked for pedestrians and it works. Test for vehicles too!
+        # Visualize midpoint for agents
+        # draw_rect(image, (camera_refpoint[1], camera_refpoint[0]), 4)
+        uncropped_bbox_2d = calc_projected_2d_bbox(camera_bbox)
+
+        # Crop vertices outside camera to image edges
+        crop_boxes_in_canvas(camera_bbox)
+
+        bbox_2d = calc_projected_2d_bbox(camera_bbox)
+
+        area = calc_bbox2d_area(bbox_2d)
+        if area < MIN_BBOX_AREA_IN_PX:
+            logging.info("Filtered out bbox with too low area {}".format(area))
+            return image, None, None, None
+
+        occlusion = calculate_occlusion(camera_bbox, agent, depth_map)
+        rotation_y = get_relative_rotation_y(agent, player_transform)
+        alpha = get_alpha(agent, player_transform)
+        truncation = calculate_truncation(uncropped_bbox_2d, bbox_2d)
+        rsu_datapoint = KittiDescriptor() 
+        rsu_datapoint.set_type(obj_type)
+        rsu_datapoint.set_bbox(bbox_2d)
+        rsu_datapoint.set_3d_object_dimensions(ext)
+        rsu_datapoint.set_3d_object_location(sensor_refpoint)
+        rsu_datapoint.set_rotation_y(rotation_y)
+        rsu_datapoint.set_alpha(alpha)
+        rsu_datapoint.set_truncated(truncation)
+        rsu_datapoint.set_occlusion(occlusion)
+    else:
+        rsu_datapoint = None
+
+
+    return image, datapoint, rsu_datapoint, camera_bbox
 
 
 def calculate_occlusion(bbox, agent, depth_map):
