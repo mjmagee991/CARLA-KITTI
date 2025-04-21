@@ -593,6 +593,7 @@ class CarlaGame(object):
                                                                           image=image,
                                                                           depth_map=depth_map,
                                                                           player_transform=self.world.player.get_transform(),
+                                                                          rsu=self.world.camera_manager.sensors['sensor.lidar.rsu_lidar']['sensor'],
                                                                           rsu_transform=self.world.camera_manager.sensors['sensor.lidar.rsu_lidar']['transform'],
                                                                           max_render_depth=args.lidar_range)
             if kitti_datapoint:

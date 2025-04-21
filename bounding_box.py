@@ -68,8 +68,33 @@ def get_bounding_box_and_refpoint(agent, camera, camera_calibration):
 
     return (camera_bbox, camera_refpoint), (sensor_bbox, sensor_refpoint)
 
+def get_bounding_box_and_refpoint_rsu(agent, rsu):
+    """
+    An extended version of Carla get_bounding_box() method, where the reference point of the bbox is also
+    concatenated with the bbox vertices to boost the performance as all vertices and refpoint are processed in parallel.
+    Returns 3D bounding box and its reference point for a agent based on camera view.
+    """
+    bbox_refpoint = np.array([[0, 0, 0, 1]], dtype=float)
+    bb_cords = ClientSideBoundingBoxes._create_bb_points(agent)
+    bb_cords_and_refpoint = np.vstack((bb_cords, bbox_refpoint))
 
-def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, player_transform, rsu_transform, max_render_depth=70):
+    cords_x_y_z = ClientSideBoundingBoxes._vehicle_to_sensor(bb_cords_and_refpoint, agent, rsu)[:3, :]
+    #cords_y_minus_z_x = np.concatenate([cords_x_y_z[1, :], -cords_x_y_z[2, :], cords_x_y_z[0, :]])
+    #bbox_and_refpoint = np.transpose(np.dot(camera_calibration, cords_y_minus_z_x))
+    #camera_bbox_refpoint = np.concatenate([bbox_and_refpoint[:, 0] / bbox_and_refpoint[:, 2], bbox_and_refpoint[:, 1] / bbox_and_refpoint[:, 2], bbox_and_refpoint[:, 2]], axis=1)
+
+    sensor_bbox_refpoint = np.transpose(cords_x_y_z)
+
+    #camera_bbox = camera_bbox_refpoint[:-1, :]
+    #camera_refpoint = np.squeeze(np.asarray(camera_bbox_refpoint[-1, :]))
+    sensor_bbox = sensor_bbox_refpoint[:-1, :]
+    sensor_refpoint = np.squeeze(np.asarray(sensor_bbox_refpoint[-1, :]))
+
+    #return (camera_bbox, camera_refpoint), (sensor_bbox, sensor_refpoint)
+    return sensor_bbox, sensor_refpoint
+
+
+def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, player_transform, rsu, rsu_transform, max_render_depth=70):
     """
     Calculates the bounding box of the given agent, and
     returns a KittiDescriptor which describes the object to be labeled
@@ -126,6 +151,8 @@ def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, pla
         camera_bbox = None
 
 
+    (sensor_bbox, sensor_refpoint) = get_bounding_box_and_refpoint_rsu(agent, rsu)
+
     # TODO Fix to actually limit to datapoints visible by the RSU
     if num_visible_vertices >= MIN_VISIBLE_VERTICES_FOR_RENDER > num_vertices_outside_camera:
         # TODO I checked for pedestrians and it works. Test for vehicles too!
@@ -144,8 +171,8 @@ def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, pla
             return image, None, None, None
 
         occlusion = calculate_occlusion(camera_bbox, agent, depth_map)
-        rotation_y = get_relative_rotation_y(agent, player_transform)
-        alpha = get_alpha(agent, player_transform)
+        rotation_y = get_relative_rotation_y(agent, rsu_transform)
+        alpha = get_alpha(agent, rsu_transform)
         truncation = calculate_truncation(uncropped_bbox_2d, bbox_2d)
         rsu_datapoint = KittiDescriptor() 
         rsu_datapoint.set_type(obj_type)
