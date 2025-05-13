@@ -6,6 +6,7 @@ from camera_utils import *
 from examples.client_bounding_boxes import ClientSideBoundingBoxes
 
 import math
+import numpy as np
 import logging
 
 OCCLUDED_VERTEX_COLOR = (255, 0, 0)
@@ -152,6 +153,9 @@ def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, pla
 
 
     (sensor_bbox, sensor_refpoint) = get_bounding_box_and_refpoint_rsu(agent, rsu)
+    # Eliminate rotation from refpoint
+    rsu_mat = np.array(rsu_transform.get_matrix())[:3,:3]
+    sensor_refpoint = np.matmul(rsu_mat, sensor_refpoint)
 
     # TODO Fix to actually limit to datapoints visible by the RSU
     if num_visible_vertices >= MIN_VISIBLE_VERTICES_FOR_RENDER > num_vertices_outside_camera:

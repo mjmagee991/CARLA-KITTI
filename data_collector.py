@@ -725,6 +725,11 @@ class CarlaGame(object):
                             point_cloud = processed_sensor_data[key]['points']
                             lidar_height = self.world.camera_manager.sensors[key]['transform'].location.z
                             lidar_cam_mat = self.world.camera_manager.sensors[key]['lidar_cam_mat']
+                            if 'rsu' in key:
+                                # Eliminate rotation from point cloud because KITTI data format doesn't support pitch or roll
+                                rsu_transform = np.array(self.world.camera_manager.sensors[key]['transform'].get_matrix())
+                                rsu_transform[:, 3] = [0,0,0,1]
+                                point_cloud = np.matmul(point_cloud, rsu_transform.transpose())
                             point_clouds.append(point_cloud)
                             lidar_heights.append(lidar_height)
                             lidar_cam_mats.append(lidar_cam_mat)
