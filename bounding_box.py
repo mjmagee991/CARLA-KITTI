@@ -95,7 +95,7 @@ def get_bounding_box_and_refpoint_rsu(agent, rsu):
     return sensor_bbox, sensor_refpoint
 
 
-def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, player_transform, rsu, rsu_transform, max_render_depth=70):
+def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, player_transform, rsu, rsu_transform, point_clouds, max_render_depth=70):
     """
     Calculates the bounding box of the given agent, and
     returns a KittiDescriptor which describes the object to be labeled
@@ -116,8 +116,11 @@ def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, pla
                                                                                   max_render_depth,
                                                                                   draw_vertices=False)
 
+
+    dist_to_lidar = np.linalg.norm(sensor_refpoint)
+    rotation_y = get_relative_rotation_y(agent, player_transform)
     # At least N vertices has to be visible in order to draw bbox
-    if num_visible_vertices >= MIN_VISIBLE_VERTICES_FOR_RENDER > num_vertices_outside_camera:
+    if 2 < dist_to_lidar < 50 and count_points_in_bounding_box(point_clouds[0], sensor_refpoint, ext, rotation_y) > 50:
 
         # TODO I checked for pedestrians and it works. Test for vehicles too!
         # Visualize midpoint for agents
@@ -135,7 +138,6 @@ def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, pla
             return image, None, None, None
 
         occlusion = calculate_occlusion(camera_bbox, agent, depth_map)
-        rotation_y = get_relative_rotation_y(agent, player_transform)
         alpha = get_alpha(agent, player_transform)
         truncation = calculate_truncation(uncropped_bbox_2d, bbox_2d)
         datapoint = KittiDescriptor()
@@ -156,28 +158,31 @@ def create_kitti_datapoint(agent, camera, cam_calibration, image, depth_map, pla
     # Eliminate rotation from refpoint
     rsu_mat = np.array(rsu_transform.get_matrix())[:3,:3]
     sensor_refpoint = np.matmul(rsu_mat, sensor_refpoint)
+    dist_to_lidar = np.linalg.norm(sensor_refpoint)
+    rotation_y = get_relative_rotation_y(agent, rsu_transform)
 
-    # TODO Fix to actually limit to datapoints visible by the RSU
-    if num_visible_vertices >= MIN_VISIBLE_VERTICES_FOR_RENDER > num_vertices_outside_camera:
+    if dist_to_lidar < 50 and count_points_in_bounding_box(point_clouds[1], sensor_refpoint, ext, rotation_y) > 50:
         # TODO I checked for pedestrians and it works. Test for vehicles too!
         # Visualize midpoint for agents
         # draw_rect(image, (camera_refpoint[1], camera_refpoint[0]), 4)
-        uncropped_bbox_2d = calc_projected_2d_bbox(camera_bbox)
+        #uncropped_bbox_2d = calc_projected_2d_bbox(camera_bbox)
 
         # Crop vertices outside camera to image edges
-        crop_boxes_in_canvas(camera_bbox)
+        #crop_boxes_in_canvas(camera_bbox)
 
-        bbox_2d = calc_projected_2d_bbox(camera_bbox)
+        #bbox_2d = calc_projected_2d_bbox(camera_bbox)
+        bbox_2d = [0,0,0,0]
 
-        area = calc_bbox2d_area(bbox_2d)
-        if area < MIN_BBOX_AREA_IN_PX:
-            logging.info("Filtered out bbox with too low area {}".format(area))
-            return image, None, None, None
+        #area = calc_bbox2d_area(bbox_2d)
+        #if area < MIN_BBOX_AREA_IN_PX:
+        #    logging.info("Filtered out bbox with too low area {}".format(area))
+        #    return image, None, None, None
 
-        occlusion = calculate_occlusion(camera_bbox, agent, depth_map)
-        rotation_y = get_relative_rotation_y(agent, rsu_transform)
+        #occlusion = calculate_occlusion(camera_bbox, agent, depth_map)
+        occlusion = 0
         alpha = get_alpha(agent, rsu_transform)
-        truncation = calculate_truncation(uncropped_bbox_2d, bbox_2d)
+        #truncation = calculate_truncation(uncropped_bbox_2d, bbox_2d)
+        truncation = 0
         rsu_datapoint = KittiDescriptor() 
         rsu_datapoint.set_type(obj_type)
         rsu_datapoint.set_bbox(bbox_2d)
@@ -308,3 +313,39 @@ def calc_bbox2d_area(bbox_2d):
     """
     xmin, ymin, xmax, ymax = bbox_2d
     return (ymax - ymin) * (xmax - xmin)
+
+
+def count_points_in_bounding_box(points, refpoint, extent, rotation_y):
+    """
+    Filters points that are inside a 3D bounding box.
+
+    Parameters:
+    points (np.ndarray): LiDAR point cloud data
+    bbox (np.ndarray): 3D bounding box corners in sensor space
+
+    Returns:
+    np.ndarray: Points that are inside the bounding box
+    """
+    # Calculate min and max coordinates of the bounding box
+    homogeneous_refpoint = np.append(refpoint, 0)
+    transformed_points = points - homogeneous_refpoint
+
+    cos_theta = np.cos(rotation_y)
+    sin_theta = np.sin(rotation_y)
+    rot_mat = [
+        [cos_theta, sin_theta, 0, 0],
+        [-sin_theta, cos_theta, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ]
+
+    transformed_points = np.matmul(transformed_points, rot_mat)
+
+    # Filter points inside the bounding box
+    cnt = np.sum(
+        (points[:, 0] >= -extent.x) & (points[:, 0] <= extent.x) &
+        (points[:, 1] >= -extent.y) & (points[:, 1] <= extent.y) &
+        (points[:, 2] >= -extent.z) & (points[:, 2] <= extent.z)
+    )
+
+    return cnt

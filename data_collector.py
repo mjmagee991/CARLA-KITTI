@@ -468,7 +468,13 @@ class CarlaGame(object):
 
         # Retrieve and draw datapoints on rgb image
         datapoint_gen_time = time.time()
-        image, datapoints, rsu_datapoints, bounding_boxes, boxes_2d = self._generate_datapoints(image, depth_map, args)
+
+        point_clouds = []
+        for key in sensor_data_dict.keys():
+            if 'lidar' in key:
+                point_clouds.append(sensor_data_dict[key]['points'])
+
+        image, datapoints, rsu_datapoints, bounding_boxes, boxes_2d = self._generate_datapoints(image, depth_map, point_clouds, args)
         #logging.info("datapoint generation time: ", (time.time() - datapoint_gen_time) * 1000.)
         # Display RGB Image
         surface = pygame.surfarray.make_surface(image.swapaxes(0, 1))
@@ -565,7 +571,7 @@ class CarlaGame(object):
     def _update_agent_location(self):
         self._agent_location_on_last_capture = self.world.player.get_transform().location
 
-    def _generate_datapoints(self, image, depth_map, args):
+    def _generate_datapoints(self, image, depth_map, point_clouds, args):
         """
         Returns a list of datapoints (labels and such) that are generated this frame
         together with the main image image
@@ -595,6 +601,7 @@ class CarlaGame(object):
                                                                           player_transform=self.world.player.get_transform(),
                                                                           rsu=self.world.camera_manager.sensors['sensor.lidar.rsu_lidar']['sensor'],
                                                                           rsu_transform=self.world.camera_manager.sensors['sensor.lidar.rsu_lidar']['transform'],
+                                                                          point_clouds=point_clouds,
                                                                           max_render_depth=args.lidar_range)
             if kitti_datapoint:
                 datapoints.append(kitti_datapoint)
