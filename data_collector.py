@@ -472,7 +472,13 @@ class CarlaGame(object):
         point_clouds = []
         for key in sensor_data_dict.keys():
             if 'lidar' in key:
-                point_clouds.append(sensor_data_dict[key]['points'])
+                point_cloud = sensor_data_dict[key]['points']
+                if 'rsu' in key:
+                    # Eliminate rotation from point cloud because KITTI data format doesn't support pitch or roll
+                    rsu_transform = np.array(self.world.camera_manager.sensors[key]['transform'].get_matrix())
+                    rsu_transform[:, 3] = [0,0,0,1]
+                    point_cloud = np.matmul(point_cloud, rsu_transform.transpose())
+                point_clouds.append(point_cloud)
 
         image, datapoints, rsu_datapoints, bounding_boxes, boxes_2d = self._generate_datapoints(image, depth_map, point_clouds, args)
         #logging.info("datapoint generation time: ", (time.time() - datapoint_gen_time) * 1000.)
