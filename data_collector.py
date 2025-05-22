@@ -436,13 +436,13 @@ class CarlaGame(object):
 
     def _save_datapoints(self, datapoints, rsu_datapoints, cam_calibration, rgb_image, point_clouds, lidar_heights, lidar_cam_mats, args):
         # Determine whether to save files
-        distance_driven = self._distance_since_last_recording()
-        logging.debug("Distance driven since last recording: {}".format(distance_driven))
-        has_driven_long_enough = distance_driven is None or distance_driven > args.distance_since_last_recording
+        #distance_driven = self._distance_since_last_recording()
+        #logging.debug("Distance driven since last recording: {}".format(distance_driven))
+        #has_driven_long_enough = distance_driven is None or distance_driven > args.distance_since_last_recording
 
         if (self._timer.step + 1) % args.steps_between_recordings == 0:
             # Modified code to ensure data is saved even when there are no vehicles
-            if has_driven_long_enough: #and datapoints:
+            if True: #has_driven_long_enough and datapoints:
                 self._update_agent_location()
                 # Save screen, lidar and kitti training labels together with calibration and groundplane files
                 self._save_training_files(datapoints, rsu_datapoints, cam_calibration, point_clouds, rgb_image, lidar_heights, lidar_cam_mats, args)
