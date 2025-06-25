@@ -5,8 +5,8 @@ import shutil
 
 new_folder_prefix = "my_kitti"
 data_path = "object/training"
-testing_dirs = [("calib", "txt"), ("image_2", "png"), ("velodyne", "bin")]
-training_dirs = [("calib", "txt"), ("image_2", "png"), ("label_2", "txt"), ("velodyne", "bin")]
+testing_dirs = [("calib", "calib", "txt"), ("image_2", "image_2", "png"), ("velodyne_rsu", "velodyne", "bin")]
+training_dirs = [("calib", "calib", "txt"), ("image_2", "image_2", "png"), ("rsu_label_2", "label_2", "txt"), ("velodyne_rsu", "velodyne", "bin")]
 
 def get_file_list(d):
     d = d.path
@@ -45,17 +45,17 @@ def main():
     # Create all output directories
     os.makedirs(f"{new_folder_prefix}/ImageSets")
     for td in testing_dirs:
-        os.makedirs(f"{new_folder_prefix}/testing/{td[0]}")
+        os.makedirs(f"{new_folder_prefix}/testing/{td[1]}")
     for td in training_dirs:
-        os.makedirs(f"{new_folder_prefix}/training/{td[0]}")
+        os.makedirs(f"{new_folder_prefix}/training/{td[1]}")
 
     # Copy data files to output directories, according to their assigned set
     for i, tf in enumerate(testing_files):
         for td in testing_dirs:
-            shutil.copy(f"{tf[0]}/{data_path}/{td[0]}/{tf[1]}.{td[1]}", f"{new_folder_prefix}/testing/{td[0]}/{i:06d}.{td[1]}")
+            shutil.copy(f"{tf[0]}/{data_path}/{td[0]}/{tf[1]}.{td[2]}", f"{new_folder_prefix}/testing/{td[1]}/{i:06d}.{td[2]}")
     for i, tf in enumerate(training_files):
         for td in training_dirs:
-            shutil.copy(f"{tf[0]}/{data_path}/{td[0]}/{tf[1]}.{td[1]}", f"{new_folder_prefix}/training/{td[0]}/{i:06d}.{td[1]}")
+            shutil.copy(f"{tf[0]}/{data_path}/{td[0]}/{tf[1]}.{td[2]}", f"{new_folder_prefix}/training/{td[1]}/{i:06d}.{td[2]}")
 
 
     # Generate image set text files to identify data
