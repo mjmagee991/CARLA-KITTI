@@ -5,8 +5,8 @@ import shutil
 
 new_folder_prefix = "my_kitti"
 data_path = "object/training"
-testing_dirs = [("calib", "calib", "txt"), ("image_2", "image_2", "png"), ("velodyne_rsu", "velodyne", "bin")]
-training_dirs = [("calib", "calib", "txt"), ("image_2", "image_2", "png"), ("rsu_label_2", "label_2", "txt"), ("velodyne_rsu", "velodyne", "bin")]
+testing_dirs = [("calib", "calib", "txt"), ("image_2", "image_2", "png"), ("velodyne_fused", "velodyne", "bin")]
+training_dirs = [("calib", "calib", "txt"), ("image_2", "image_2", "png"), ("fused_label_2", "label_2", "txt"), ("velodyne_fused", "velodyne", "bin")]
 
 def get_file_list(d):
     d = d.path
