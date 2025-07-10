@@ -67,7 +67,7 @@ def main():
 
             # ego_body is the reference of the body of the ego vehicle
             world_from_ego_body = np.eye(4)
-            world_from_ego_body[:3, :3] = Rotation.from_euler('zyx', pose_data[3:], degrees=True).as_matrix()
+            world_from_ego_body[:3, :3] = Rotation.from_euler('ZYX', [pose_data[3], -pose_data[4], -pose_data[5]], degrees=True).as_matrix()
             world_from_ego_body[:3, 3] = pose_data[:3]
             # ego is the reference frame of the ego LiDAR
             ego_body_from_ego = np.eye(4)
