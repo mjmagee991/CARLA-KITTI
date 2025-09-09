@@ -61,9 +61,7 @@ def main():
         # Combine point clouds and labels for each file in the directory
         for filename in [f.name[:-4] for f in os.scandir(ego_point_cloud_dir)]:
             # Read pose data and create transformation
-            with open(f"{pose_dir}/{filename}.txt") as pose_file:
-                reader = csv.reader(pose_file, skipinitialspace=True)
-                pose_data = [float(s) for s in next(reader)]
+            pose_data = np.loadtxt(transform_path, delimiter=',')
 
             # ego_body is the reference of the body of the ego vehicle
             world_from_ego_body = np.eye(4)
