@@ -58,7 +58,7 @@ class CameraManager(object):
                                      'upper_fov': '7.0',                      # repo: 7  paper vert fov: 26.9°
                                      'lower_fov': '-16.0',                    # repo: -16  paper vert fov: 26.9°
                                      'atmosphere_attenuation_rate': '0.004',  # carla: 0.004
-                                     'noise_stddev': '0.0',                   # carla: 0.0
+                                     'noise_stddev': '0.1',                   # carla: 0.0
                                      'dropoff_general_rate': '0.10',          # carla: 0.45
                                      'dropoff_zero_intensity': '0.4',         # carla: 0.4
                                      'dropoff_intensity_limit': '0.8'}        # carla: 0.8
@@ -67,18 +67,21 @@ class CameraManager(object):
                                       'horizontal_fov_limit': '70',
                                       'vertical_fov_limit': '30.0',
                                       'mirror_frequency': '150.0',  # TODO what's this?
+                                      'noise_stddev': '0.1',
                                       'range': str(args.lidar_range)}
         # Based on information from Ali
         lidar_os1_128_attributes = {'channels': '128',
                                     'range': '170',
                                     'points_per_second': '524288',
                                     'rotation_frequency': '10',
+                                    'noise_stddev': '0.1',
                                     'upper_fov': '21.2',
                                     'lower_fov': '-21.2'}
         lidar_os0_64_attributes = {'channels': '64',
                                    'range': '50',
                                    'points_per_second': '131072',
                                    'rotation_frequency': '10',
+                                   'noise_stddev': '0.1',
                                    'upper_fov': '45.0',
                                    'lower_fov': '-45.0'}
         # Based on Ouster OS0 REV7.0
@@ -87,6 +90,7 @@ class CameraManager(object):
                                     'range': '75',
                                     'points_per_second': '5242880',
                                     'rotation_frequency': '10',
+                                    'noise_stddev': '0.1',
                                     'upper_fov': '45.4',
                                     'lower_fov': '-45.4'}
 
@@ -119,6 +123,32 @@ class CameraManager(object):
 
         self.setup_sensors(args)
         self.add_rsu(args, lidar_os0_128_attributes)
+
+        self.add_imu(args)
+
+    def add_imu(self, args):
+        sensor_key = 'sensor.imu'
+        transform = carla.Transform(carla.Location(x=0.0, y=0.0, z=2.0))
+        imu_sensor_def = {sensor_key: {'name': 'IMU',
+                                       'attributes': {},
+                                       'transform': transform}}
+        self.sensors.update(imu_sensor_def)
+
+        world = self._parent.get_world()
+        bp_library = world.get_blueprint_library()
+        blp = bp_library.find('sensor.other.imu')
+        blp.set_attribute('noise_accel_stddev_x', '0.1')
+        blp.set_attribute('noise_accel_stddev_y', '0.1')
+        blp.set_attribute('noise_accel_stddev_z', '0.1')
+        blp.set_attribute('noise_gyro_stddev_x', '0.1')
+        blp.set_attribute('noise_gyro_stddev_y', '0.1')
+        blp.set_attribute('noise_gyro_stddev_z', '0.1')
+        blp.set_attribute('noise_gyro_bias_x', '0.1')
+        blp.set_attribute('noise_gyro_bias_y', '0.1')
+        blp.set_attribute('noise_gyro_bias_z', '0.1')
+
+        sensor = self._parent.get_world().spawn_actor(blp, transform)
+        self.sensors[sensor_key].update({'sensor': sensor})
 
     def add_rsu(self, args, attrs):
         sensor_key = 'sensor.lidar.rsu_lidar'
@@ -434,7 +464,19 @@ class CarlaGame(object):
         with open(pose_info_path, 'w') as f:
             f.write(pose_info)
 
-    def _save_datapoints(self, datapoints, rsu_datapoints, cam_calibration, rgb_image, point_clouds, lidar_heights, lidar_cam_mats, args):
+    def _save_imu_data(self, args, imu_list):
+        imu_str = ', '.join(map(str, imu_list))
+
+        imu_data_path = os.path.join(args.phase_dir, "imu.txt")
+        with open(imu_data_path, 'a') as f:
+            f.write(f"{imu_str}\n")
+
+    def _save_timestamp(self, args, timestamp):
+        timestamp_path = os.path.join(args.phase_dir, "timestamp.txt")
+        with open(timestamp_path, 'a') as f:
+            f.write(f"{timestamp}\n")
+
+    def _save_datapoints(self, timestamp, datapoints, rsu_datapoints, cam_calibration, rgb_image, imu_list, point_clouds, lidar_heights, lidar_cam_mats, args):
         # Determine whether to save files
         #distance_driven = self._distance_since_last_recording()
         #logging.debug("Distance driven since last recording: {}".format(distance_driven))
@@ -447,6 +489,8 @@ class CarlaGame(object):
                 # Save screen, lidar and kitti training labels together with calibration and groundplane files
                 self._save_training_files(datapoints, rsu_datapoints, cam_calibration, point_clouds, rgb_image, lidar_heights, lidar_cam_mats, args)
                 self._save_pose_info(args)
+                self._save_imu_data(args, imu_list)
+                self._save_timestamp(args, timestamp)
                 self.captured_frame_no += 1
                 self._captured_frames_since_restart += 1
                 self._frames_since_last_capture = 0
@@ -621,6 +665,7 @@ class CarlaGame(object):
     def _preprocess_sensor_data(self, sensor_data):
         processed_data = dict()
 
+        processed_data.update({'timestamp': str(list(sensor_data.values())[0].timestamp)})
         for sensor_key, sensor_data in sensor_data.items():
             # Assume a same preprocessing step for both blickfeld and raycasting lidars
             if 'sensor.lidar' in sensor_key:
@@ -654,6 +699,19 @@ class CarlaGame(object):
                 lidar_img[tuple(lidar_data.T)] = (255, 255, 255)
 
                 processed_data.update({sensor_key: {'image': lidar_img, 'points': points}})
+            elif 'sensor.imu' in sensor_key:
+                imu_list = [
+                    sensor_data.frame,
+                    sensor_data.timestamp,
+                    sensor_data.accelerometer.x,
+                    sensor_data.accelerometer.y,
+                    sensor_data.accelerometer.z,
+                    sensor_data.gyroscope.x,
+                    sensor_data.gyroscope.y,
+                    sensor_data.gyroscope.z,
+                    sensor_data.compass
+                ]
+                processed_data.update({sensor_key: {'measurement': imu_list}})
             else:
                 color_converter = cc.Depth if 'depth' in sensor_key else cc.Raw
                 sensor_data.convert(color_converter)
@@ -747,11 +805,15 @@ class CarlaGame(object):
                             lidar_heights.append(lidar_height)
                             lidar_cam_mats.append(lidar_cam_mat)
 
+                    timestamp = processed_sensor_data['timestamp']
                     rgb_image = processed_sensor_data['sensor.camera.rgb']['image']
-                    self._save_datapoints(datapoints,
+                    imu_list = processed_sensor_data['sensor.imu']['measurement']
+                    self._save_datapoints(timestamp,
+                                          datapoints,
                                           rsu_datapoints,
                                           self.world.camera_manager.sensors['sensor.camera.rgb']['calibration'],
                                           rgb_image,
+                                          imu_list,
                                           point_clouds,
                                           lidar_heights, lidar_cam_mats, args)
 
