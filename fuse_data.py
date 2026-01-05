@@ -2,6 +2,7 @@ import sys
 import os
 import numpy as np
 import csv
+import math
 from scipy.spatial.transform import Rotation
 
 data_path = "object/training"
@@ -56,23 +57,13 @@ def main():
         # Create RSU-world transformation matrix
         # No rotation because it is already handled in data_collector.py
         world_from_rsu = np.eye(4)
-        world_from_rsu[:3, 3] = [-93.5, 145.5, 5.5]
+        world_from_rsu[:3, 3] = [-93.5, -145.5, 5.5]
 
         # Combine point clouds and labels for each file in the directory
         for filename in [f.name[:-4] for f in os.scandir(ego_point_cloud_dir)]:
-            # Read pose data and create transformation
-            pose_data = np.loadtxt(transform_path, delimiter=',')
-
-            # ego_body is the reference of the body of the ego vehicle
-            world_from_ego_body = np.eye(4)
-            world_from_ego_body[:3, :3] = Rotation.from_euler('ZYX', [pose_data[3], -pose_data[4], -pose_data[5]], degrees=True).as_matrix()
-            world_from_ego_body[:3, 3] = pose_data[:3]
-            # ego is the reference frame of the ego LiDAR
-            ego_body_from_ego = np.eye(4)
-            ego_body_from_ego[:3, 3] = [1.6, 0, 1.7]
-
-            world_from_ego = world_from_ego_body @ ego_body_from_ego
-            ego_yaw_rotation = np.deg2rad(pose_data[3])
+            # Get ground truth transformation and yaw rotation
+            world_from_ego = np.loadtxt(f"{pose_dir}/{filename}.txt")
+            ego_yaw_rotation = Rotation.from_matrix(world_from_ego[:3,:3]).as_euler('ZYX')[0]
 
             # Calculate transformation from rsu to ego coordinates
             ego_from_world = np.linalg.inv(world_from_ego)
@@ -81,16 +72,12 @@ def main():
             rsu_rotate_to_ego = np.transpose(ego_from_rsu[:3, :3])
             rsu_translate_to_ego = ego_from_rsu[:3, 3]
 
-            # Read combine point clouds
+            # Read and combine point clouds
             ego_point_cloud = np.fromfile(f"{ego_point_cloud_dir}/{filename}.bin", dtype=np.float32).reshape(-1, 4)
             rsu_point_cloud = np.fromfile(f"{rsu_point_cloud_dir}/{filename}.bin", dtype=np.float32).reshape(-1, 4)
             
-            # RSU point cloud needs to have the y-axis inverted because CARLA and Unreal use different axes
-            # See docs for more detail
-            rsu_point_cloud[:, 1] = -rsu_point_cloud[:, 1]
             rsu_point_cloud[:, :3] @= rsu_rotate_to_ego
             rsu_point_cloud[:, :3] += rsu_translate_to_ego
-            rsu_point_cloud[:, 1] = -rsu_point_cloud[:, 1]
 
             fused_point_cloud = np.concatenate((ego_point_cloud, rsu_point_cloud), axis=0)
             fused_point_cloud.tofile(f"{fused_point_cloud_dir}/{filename}.bin")
@@ -101,20 +88,37 @@ def main():
 
             # Transform RSU labels to the ego coordinate frame
             for i in range(len(rsu_labels)):
-                # Label data is stored as (y, -z, x) but our transform has to be done in (x, y, z)
-                # See docs for more detail
-                label = rsu_labels[i][1]
-                position = [label[2], label[0], -label[1]]
-                position @= rsu_rotate_to_ego
-                position += rsu_translate_to_ego
-                rsu_labels[i][1] = [position[1], -position[2], position[0]]
+                # Label data is stored in camera coordinates (-y, -z, x), but
+                # our transform has to be applied in LiDAR coordinates (x, y, z)
+                position_camera = rsu_labels[i][1]
+                position_lidar = [position_camera[2], -position_camera[0], -position_camera[1]]
 
-                rsu_labels[i][2] -= ego_yaw_rotation
+                position_lidar @= rsu_rotate_to_ego
+                position_lidar += rsu_translate_to_ego
 
-            # Remove duplicates and the ego vehicle bounding box
+                rsu_labels[i][1] = [-position_lidar[1], -position_lidar[2], position_lidar[0]]
+
+                # Update yaw and ensure it remains in [-pi, pi]
+                rsu_labels[i][2] += ego_yaw_rotation
+                if rsu_labels[i][2] > math.pi:
+                    rsu_labels[i][2] -= 2 * math.pi
+                elif rsu_labels[i][2] < -math.pi:
+                    rsu_labels[i][2] += 2 * math.pi
+
+            # Remove bounding box for the ego vehicle if it's detected
+            for rsu_label in rsu_labels:
+                # In camera coordinates, (0, 1.7, -1.6) is behind and below
+                # the LiDAR, where the center of the vehicle is
+                if np.linalg.norm(np.subtract([0, 1.7, -1.6], rsu_label[1])) < 0.1:
+                    rsu_labels.remove(rsu_label)
+                    break
+
+            # Remove duplicates
             for ego_label in ego_labels:
                 for rsu_label in rsu_labels:
-                    if np.linalg.norm(np.subtract([0, 1.7, -1.6], rsu_label[1])) < 0.1 or np.linalg.norm(np.subtract(ego_label[1], rsu_label[1])) < 0.1:
+                    if np.linalg.norm(np.subtract(ego_label[1], rsu_label[1])) < 0.1:
+                        if filename == '000133':
+                            print(f'Detected: {rsu_label}')
                         rsu_labels.remove(rsu_label)
                         break
 

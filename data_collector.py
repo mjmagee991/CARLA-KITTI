@@ -438,21 +438,18 @@ class CarlaGame(object):
         return dist_func(cur_pos, last_pos)
 
     def _save_pose_info(self, args):
-        # Get the transform of the ego vehicle
-        transform = self.world.player.get_transform()
-        location = transform.location
-        rotation = transform.rotation
+        # Get pose transformation matrix from CARLA
+        world_from_vehicle_body_carla = self.world.player.get_transform().get_matrix()
 
-        # Extract pose information
-        x = location.x
-        y = location.y
-        z = location.z
-        yaw = rotation.yaw
-        pitch = rotation.pitch
-        roll = rotation.roll
+        # Invert y-axis to get from CARLA/Unreal coordinates to LiDAR coordinates
+        y_inversion_matrix = np.eye(4)
+        y_inversion_matrix[1,1] = -1
+        world_from_vehicle_body = y_inversion_matrix @ world_from_vehicle_body_carla @ y_inversion_matrix
 
-        # Create a string with pose information
-        pose_info = f"{x:.4f}, {y:.4f}, {z:.4f}, {yaw:.4f}, {pitch:.4f}, {roll:.4f}\n"
+        # Apply transformation from vehicle body to LiDAR
+        vehicle_body_from_vehicle_lidar = np.eye(4)
+        vehicle_body_from_vehicle_lidar[:3, 3] = [1.6, 0, 1.7]
+        world_from_vehicle_lidar = world_from_vehicle_body @ vehicle_body_from_vehicle_lidar
 
         # Define the path to save the pose information file
         pose_info_folder = os.path.join(args.phase_dir, 'pose')
@@ -460,9 +457,7 @@ class CarlaGame(object):
 
         pose_info_path = os.path.join(pose_info_folder, f"{self.captured_frame_no:06}.txt")
 
-        # Write the pose information to the file
-        with open(pose_info_path, 'w') as f:
-            f.write(pose_info)
+        np.savetxt(pose_info_path, world_from_vehicle_lidar)
 
     def _save_imu_data(self, args, imu_list):
         imu_str = ', '.join(map(str, imu_list))
