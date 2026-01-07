@@ -460,6 +460,9 @@ class CarlaGame(object):
         np.savetxt(pose_info_path, world_from_vehicle_lidar)
 
     def _save_imu_data(self, args, imu_list):
+        if not args.map_sensors:
+            return
+
         imu_str = ', '.join(map(str, imu_list))
 
         imu_data_path = os.path.join(args.phase_dir, "imu.txt")
@@ -467,6 +470,9 @@ class CarlaGame(object):
             f.write(f"{imu_str}\n")
 
     def _save_timestamp(self, args, timestamp):
+        if not args.map_sensors:
+            return
+
         timestamp_path = os.path.join(args.phase_dir, "timestamp.txt")
         with open(timestamp_path, 'a') as f:
             f.write(f"{timestamp}\n")
@@ -730,6 +736,7 @@ class CarlaGame(object):
     def game_loop(self, args):
         """ Main loop for agent"""
 
+        init_frames = 0
         sensors = [val['sensor'] for val in self.world.camera_manager.sensors.values()]
         # Create a synchronous mode context.
         with CarlaSyncMode(self.world.world, *sensors, fps=args.fps) as sync_mode:
@@ -781,7 +788,9 @@ class CarlaGame(object):
                 self.world.render(self.display)
                 pygame.display.flip()
 
-                if args.save_data:
+                if init_frames < 20:
+                    init_frames += 1
+                elif args.save_data:
 
                     point_clouds = []
                     lidar_heights = []
@@ -811,6 +820,10 @@ class CarlaGame(object):
                                           imu_list,
                                           point_clouds,
                                           lidar_heights, lidar_cam_mats, args)
+
+                    if args.num_frames and self.captured_frame_no >= args.num_frames:
+                        logging.info(f"Reached limit of {args.num_frames} frames. Exiting...")
+                        return
 
                 if (args.autopilot == False):
                     # Set new destination when target has been reached
@@ -927,6 +940,11 @@ def main():
         type=int,
         help='How many frames to render before resetting the environment. For example, the agent may be stuck')
     argparser.add_argument(
+        '--map_sensors',
+        action='store_true',
+        dest='map_sensors',
+        help='Whether to enable the sensors required for mapping')
+    argparser.add_argument(
         '--lidars',
         nargs='+',
         help='List of lidar types used for visualization and data collection.' +
@@ -942,6 +960,11 @@ def main():
         action='store_true',
         dest='save_data',
         help='Whether or not to save training data')
+    argparser.add_argument(
+        '--num_frames',
+        default=None,
+        type=int,
+        help='Stop after recording this many frames; only takes effect if saving data')
     argparser.add_argument(
         '--phase',
         default='training',
@@ -970,10 +993,11 @@ def main():
     spawn_npc_path = os.path.join(carla_root, 'PythonAPI', 'examples', 'spawn_npc.py')
 
     def target(**kwargs):
-        process = subprocess.Popen([spawn_npc_path, '-n 100', '-w 0'], **kwargs)
+        process = subprocess.Popen([spawn_npc_path, '--safe', '-n 100', '-w 0'], **kwargs)
         process.communicate()
 
     thread = threading.Thread(target=target, kwargs={'stdout':subprocess.PIPE})
+    thread.daemon = True
     thread.start()
 
     args = argparser.parse_args()
